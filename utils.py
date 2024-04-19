@@ -9,7 +9,6 @@ from loss import class_wise_mae_subscores
 from tqdm import tqdm
 import json
 import re
-import emoji
 import ast
 import pickle
 from soynlp.normalizer import repeat_normalize
@@ -17,18 +16,7 @@ from torch.optim import SGD, Adam, AdamW
 import torch.optim as optim
 
 
-emojis = list({y for x in emoji.UNICODE_EMOJI.values() for y in x.keys()})
-emojis = ''.join(emojis)
-pattern = re.compile(f'[^ .,?!/@$%~％·∼()\x00-\x7Fㄱ-ㅣ가-힣{emojis}]+')
-url_pattern = re.compile(
-    r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)')
 
-def clean(x):
-    x = pattern.sub(' ', x)
-    x = url_pattern.sub('', x)
-    x = x.strip()
-    x = repeat_normalize(x, num_repeats=2)
-    return x
 
 def load_base_config(path='./configs.json'):
     with open(path) as f:
@@ -161,170 +149,6 @@ def cross_prompt_load_data(data_path, args, train_prompt, test_prompt):
     references = (th.LongTensor(reference_ids), th.LongTensor(reference_sen_pos), th.LongTensor(reference_doc_pos))
     
     return preprocessed_data, references, mean_score, train_indices, test_index_list, prompt_sen_embeddings, prompt_key_embeddings
-
-def dummy_cross_prompt_load_data(data_path, args, train_prompt, test_prompt):
-    """_summary_
-
-    Args:
-        data_path (str): path of dataset
-        args.school_level (str): level of school (e.g. elementary, middle, high)
-        args.measure (str): types of measurement (e.g. total_exp, total_org, total_cont)
-        args.bert_model (str): types of bert model
-        args.max_len (int): maximal length of inputed essay
-        
-    return:
-        input_ids (int): the token ids of raw essays
-        token_type_ids (int): the type ids of input_ids
-        attention_masks (int): attention masks of input_ids
-        position_ids (int): position encoding of input_ids
-        scores (float): groun truth scores
-
-    """    
-    
-    data = pd.read_csv(data_path)[['ESSAY_SUBJECT', 'ESSAY_CONTENT', 'total_exp', 'total_org', 'total_cont', 'total_score']]
-    # aug_data = pd.read_csv('./data/aug_data.csv')[['ESSAY_SUBJECT', 'ESSAY_CONTENT', 'total_exp', 'total_org', 'total_cont', 'total_score']]
-    aug_data = pd.read_csv('./data/new_aug_data.csv')[['ESSAY_SUBJECT', 'ESSAY_CONTENT', 'total_exp', 'total_org', 'total_cont', 'total_score']]
-    
-    data = pd.concat([data, aug_data]).reset_index(drop=True)
-    sen_pos_ids = np.array(pd.read_pickle('./data/pos/new_aug_new_sentence_pos.pkl'))
-    doc_pos_ids = np.array(pd.read_pickle('./data/pos/new_aug_new_essay_pos.pkl'))
-    dummy_sen_pos_ids = np.array(pd.read_pickle('./data/pos/dummy_sentence_pos.pkl'))
-    dummy_doc_pos_ids = np.array(pd.read_pickle('./data/pos/dummy_essay_pos.pkl'))
-    entire_sentence_embeddings = np.array(pd.read_pickle('./data/new_aug_{}_sentence_embeddings.pkl'.format(args.num_sentence)))
-    entire_sentences = np.array(pd.read_pickle('./data/new_aug_{}_sentences.pkl'.format(args.num_sentence)))
-    entire_keyword_embeddings = np.array(pd.read_pickle('./data/new_aug_{}_keyword_embeddings.pkl'.format(args.num_keyword)))
-    entire_keywords = np.array(pd.read_pickle('./data/new_aug_{}_keywords.pkl'.format(args.num_keyword)))
-    dummy_sentence_embeddings = np.array(pd.read_pickle('./data/dummy_{}_sentence_embeddings.pkl'.format(args.num_sentence)))
-    dummy_sentences = np.array(pd.read_pickle('./data/dummy_{}_sentences.pkl'.format(args.num_sentence)))
-    dummy_keyword_embeddings = np.array(pd.read_pickle('./data/dummy_{}_keyword_embeddings.pkl'.format(args.num_keyword)))
-    dummy_keywords = np.array(pd.read_pickle('./data/dummy_{}_keywords.pkl'.format(args.num_keyword)))
-    
-    total_prompt = train_prompt + test_prompt
-    
-    
-    for p in total_prompt:
-        tmp_data = data[data['ESSAY_SUBJECT'] == p]
-        raw_exp_scores = tmp_data['total_exp']
-        raw_org_scores = tmp_data['total_org']
-        raw_cont_scores = tmp_data['total_cont']
-        raw_total_scores = tmp_data['total_score']
-    
-        exp_min_score = raw_exp_scores.min()
-        exp_max_score = raw_exp_scores.max()
-        scaled_exp_scores = ((raw_exp_scores-exp_min_score)*(10-0))/(exp_max_score-exp_min_score)
-        org_min_score = raw_org_scores.min()
-        org_max_score = raw_org_scores.max()
-        scaled_org_scores = ((raw_org_scores-org_min_score)*(10-0))/(org_max_score-org_min_score)
-        cont_min_score = raw_cont_scores.min()
-        cont_max_score = raw_cont_scores.max()
-        scaled_cont_scores = ((raw_cont_scores-cont_min_score)*(10-0))/(cont_max_score-cont_min_score)
-        total_min_score = raw_total_scores.min()
-        total_max_score = raw_total_scores.max()
-        scaled_total_scores = ((raw_total_scores-total_min_score)*(10-0))/(total_max_score-total_min_score)
-    
-        data.loc[data['ESSAY_SUBJECT']==p, 'total_exp'] = scaled_exp_scores/10
-        data.loc[data['ESSAY_SUBJECT']==p, 'total_org'] = scaled_org_scores/10
-        data.loc[data['ESSAY_SUBJECT']==p, 'total_cont'] = scaled_cont_scores/10
-        data.loc[data['ESSAY_SUBJECT']==p, 'total_score'] = scaled_total_scores/10
-        
-    scaled_total_scores = data['total_score']
-    
-    prompt = '미래 도시에 대한 본인의 생각'
-    
-    # filtered_data = data[(data['ESSAY_LEN']<=500)&(data['ESSAY_SUBJECT']==args.prompt)].reset_index(drop=True)
-    
-    train_data = data[data['ESSAY_SUBJECT'].isin(train_prompt)]
-    train_data = train_data[["ESSAY_SUBJECT", "ESSAY_CONTENT", args.measure]]
-    # filtered_aug_data = aug_data[['ESSAY_SUBJECT', 'ESSAY_CONTENT', args.measure]]
-    # train_data = pd.concat([train_data, filtered_aug_data])
-    top_k_indices = train_data.nlargest(args.num_ref, columns=args.measure).index.tolist()
-    reference_data = train_data.loc[top_k_indices].values
-    train_data = train_data.drop(top_k_indices)
-    train_indices = train_data.index
-    train_data = train_data.values
-    
-    mean_score = scaled_total_scores[train_indices].mean().astype(float)
-    
-    test_data = pd.read_pickle("./data/dummpy_data.pkl")
-    
-    
-    test_data = np.array(test_data)
-    
-    
-    # preprocessing reference essays
-    reference_raw_essay = reference_data[:,0]
-    reference_sentences = entire_sentences[top_k_indices]
-    reference_keywords = entire_keywords[top_k_indices]
-    reference_sen_pos = sen_pos_ids[top_k_indices]
-    reference_doc_pos = doc_pos_ids[top_k_indices]
-    # reference_scores = reference_data[:,5].astype(float).round()
-    
-    # with open('./result/cross_prompt/reference_essays.pkl', 'wb') as f:
-    #     pickle.dump(reference_raw_essay, f)
-    # with open('./result/cross_prompt/reference_sentences.pkl', 'wb') as f:
-    #     pickle.dump(reference_sentences, f)
-    # with open('./result/cross_prompt/reference_keywords.pkl', 'wb') as f:
-    #     pickle.dump(reference_keywords, f)
-    
-    # filtered_data = data.dropna(
-    #     subset=["ESSAY_SUBJECT", "ESSAY_LEN", "ESSAY_CONTENT", args.measure])[["ESSAY_SUBJECT", 
-    #                                                              "ESSAY_LEN", "ESSAY_CONTENT", 'ttr', 'scaled_sentence_mean_length', 
-    #                                                              'scaled_essay_length', 'total_exp', 'total_org', 'total_cont', 'total_score']].values
-    
-    # filtered_data = data.values
-    # filtered_aug_data = aug_data.values
-    # total_subjects = filtered_data[:,0]
-    # total_essay = filtered_data[:,1]
-    # total_scores = filtered_data[:,2:].astype(float)
-    prompt_ids = pd.read_pickle('./data/preprocessed_data/prompt_ids.pkl')
-    # prompt_sen_embeddings = th.tensor(pd.read_pickle('./data/preprocessed_data/prompt_sentence_embeddings.pkl'))
-    prompt_sen_embeddings = th.tensor(pd.read_pickle('./data/preprocessed_data/prompt_whole_sen_embeddings.pkl'))
-    prompt_key_embeddings = th.tensor(pd.read_pickle('./data/preprocessed_data/prompt_keyword_embeddings.pkl'))
-    prompts = list()
-    for i in range(len(test_data)):
-        prompts.append(prompt_ids[prompt])
-    prompt_ids = th.tensor(prompts)
-    
-    
-    # tokenizer = AutoTokenizer.from_pretrained(args.bert_model)
-    
-    
-    # ids = []
-    # input_ids = []
-    # attention_masks = []
-    # for i,e in enumerate(tqdm(test_data)):
-    #     ids.append(i)
-    #     processed_essay = "[CLS] "+clean(e.replace("<span>#@문장구분#</span>","").replace("\n",""))
-    #     encoded_essay = tokenizer.encode_plus(
-    #         processed_essay,
-    #         return_token_type_ids = True,
-    #         return_attention_mask = True,
-    #         return_tensors = "pt",
-    #         max_length = args.max_len,
-    #         padding='max_length',
-    #         truncation=True
-    #     )
-        
-    #     input_ids.append(encoded_essay['input_ids'])            
-    #     attention_masks.append(encoded_essay['attention_mask'])
-    
-  
-    
-    # Creating position IDs
-    
-    reference_ids = []
-    
-    for i,e in enumerate(tqdm(reference_raw_essay)):
-        reference_ids.append(i)
-    
-    
-    
-    preprocessed_data = (th.LongTensor(ids), th.LongTensor(th.cat(input_ids, dim=0)), th.LongTensor(th.cat(attention_masks, dim=0)), th.FloatTensor(entire_sentence_embeddings), \
-        th.FloatTensor(entire_keyword_embeddings), entire_sentences, entire_keywords, prompt_ids, th.LongTensor(dummy_sen_pos_ids), th.LongTensor(dummy_doc_pos_ids), th.FloatTensor(dummy_sentence_embeddings),
-        th.FloatTensor(dummy_keyword_embeddings), dummy_sentences, dummy_keywords)
-    
-    references = (th.LongTensor(reference_ids), reference_sentences, reference_keywords, th.LongTensor(reference_sen_pos), th.LongTensor(reference_doc_pos))
-    return preprocessed_data, references, prompt_sen_embeddings, prompt_key_embeddings, mean_score
 
 
 

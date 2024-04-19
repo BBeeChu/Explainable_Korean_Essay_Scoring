@@ -9,7 +9,7 @@ Before running the model, you must satisfy the following prerequisites:
 - python==3.9.0
 - pytorch==2.2.0
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt 
 ```
 
 

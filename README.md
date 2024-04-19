@@ -7,6 +7,7 @@ This is a PyTorch implementaion of Korean Essay Scoring using text-similarity wi
 Before running the model, you must satisfy the following prerequisites:
 
 - python==3.9.0
+- pytorch==2.2.0
 ```
 pip install -r requirements.txt
 ```
@@ -22,3 +23,4 @@ Please, refer to balanced_loss_viz.ipynb
 
 ## Data
 Please, download the files from the drive below. Then, locate all the files in the 'data/' directory.
+https://drive.google.com/drive/folders/14N8pDUjOmsQXtqas_DGptf14IZBnhEV-?usp=sharing
